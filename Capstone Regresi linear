@@ -111,3 +111,4 @@ def prediksi_harga(b):
 
 tombol.on_click(prediksi_harga)
 display(*widget_list, tombol, out)
+

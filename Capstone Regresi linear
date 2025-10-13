@@ -1,0 +1,113 @@
+# === STEP 0: Install dan import library ===
+!pip install openpyxl ipywidgets
+from google.colab import files
+import openpyxl
+import numpy as np
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+
+# === STEP 1: Upload file Excel ===
+print("📁 Silakan upload file DATA RUMAH.xlsx")
+uploaded = files.upload()
+file = list(uploaded.keys())[0]
+
+# === STEP 2: Baca data Excel ===
+wb = openpyxl.load_workbook(file)
+sheet = wb.active
+rows = list(sheet.iter_rows(values_only=True))
+header = rows[0]
+data_rows = rows[1:]
+print(f"✅ Data berhasil dibaca! Jumlah data: {len(data_rows)} baris, {len(header)} kolom\n")
+
+# === STEP 3: Pisahkan fitur numerik dan target (Harga) ===
+numeric_indices = []
+for i, col in enumerate(zip(*data_rows)):
+    if all(isinstance(v, (int, float)) or (isinstance(v, str) and v.replace('.', '', 1).isdigit()) for v in col if v is not None):
+        numeric_indices.append(i)
+
+# Tentukan kolom target (Harga)
+target_col = None
+for i, nama in enumerate(header):
+    if nama.lower() in ["harga", "price", "target"]:
+        target_col = i
+        break
+
+# Ambil fitur numerik selain target
+fitur_indices = [i for i in numeric_indices if i != target_col and header[i].lower() not in ["no", "id"]]
+fitur_names = [header[i] for i in fitur_indices]
+
+# Buat matriks X dan y
+X = []
+y = []
+for row in data_rows:
+    try:
+        x_row = [float(row[i]) for i in fitur_indices]
+        target_val = float(row[target_col])
+        X.append(x_row)
+        y.append(target_val)
+    except:
+        continue
+
+X = np.array(X)
+y = np.array(y)
+
+# Tambahkan kolom 1 untuk intercept
+X_b = np.c_[np.ones((X.shape[0], 1)), X]
+
+# === STEP 4: Hitung koefisien regresi (β) ===
+beta = np.linalg.inv(X_b.T.dot(X_b)).dot(X_b.T).dot(y)
+
+print("✅ Model regresi linear berhasil dibentuk!\n")
+print("Persamaan Linear Regression:")
+persamaan = "Harga = {:.2f}".format(beta[0])
+for i, nama in enumerate(fitur_names):
+    persamaan += f" + ({beta[i+1]:.2f} × {nama})"
+print(persamaan)
+
+# === STEP 5: Format rupiah ===
+def format_rupiah(nilai):
+    abs_val = abs(nilai)
+    if abs_val >= 1_000_000_000_000:
+        return f"Rp {nilai/1_000_000_000_000:.2f} triliun"
+    elif abs_val >= 1_000_000_000:
+        return f"Rp {nilai/1_000_000_000:.2f} miliar"
+    elif abs_val >= 1_000_000:
+        return f"Rp {nilai/1_000_000:.2f} juta"
+    elif abs_val >= 1_000:
+        return f"Rp {nilai/1_000:.2f} ribu"
+    else:
+        return f"Rp {nilai:.2f}"
+
+# === STEP 6: Buat input interaktif ===
+print("\n🏠 Masukkan spesifikasi rumah untuk prediksi harga:")
+
+widget_list = []
+for nama in fitur_names:
+    w = widgets.FloatText(
+        value=0.0,
+        description=f"{nama}:",
+        style={'description_width': 'initial'},
+        layout=widgets.Layout(width='50%')
+    )
+    widget_list.append(w)
+
+tombol = widgets.Button(
+    description="Prediksi Harga 💰",
+    button_style='success',
+    layout=widgets.Layout(width='40%', margin='10px 0px 10px 0px')
+)
+out = widgets.Output()
+
+# === STEP 7: Fungsi prediksi ===
+def prediksi_harga(b):
+    with out:
+        clear_output()
+        fitur_input = [float(w.value) for w in widget_list]
+        X_new = np.array([1] + fitur_input)
+        harga_pred = X_new.dot(beta)
+        print(f"💡 Prediksi Harga Rumah: {format_rupiah(harga_pred)}")
+        print("\n📈 Berdasarkan model:")
+        print(persamaan)
+
+tombol.on_click(prediksi_harga)
+display(*widget_list, tombol, out)
